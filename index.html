@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Asthma Smartwatch Dashboard</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root { --bg: #0f0f1a; --card: #1a1a2e; --accent: #6a11cb; --accent2: #2575fc; --text: #e0e0ff; --text-light: #a0a0cc; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 20px; margin: 0; }
+        
+        #loginScreen, #signupScreen { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; align-items:center; justify-content:center; z-index:1000; }
+        .auth-card { background: var(--card); padding:40px 30px; border-radius:20px; width:90%; max-width:400px; text-align:center; box-shadow:0 20px 40px rgba(106,17,203,0.3); }
+        h2 { color:var(--accent); margin-bottom:25px; }
+        input { width:100%; padding:15px; margin:12px 0; background:#16213e; border:2px solid #334155; border-radius:12px; color:white; font-size:16px; }
+        button { width:100%; padding:15px; background:linear-gradient(to right, var(--accent), var(--accent2)); color:white; border:none; border-radius:12px; font-size:17px; font-weight:bold; cursor:pointer; margin-top:10px; }
+        .error { color:#ff6b6b; margin-top:10px; }
+        .toggle-link { color:var(--accent2); margin-top:20px; cursor:pointer; }
+
+        .password-wrapper { position: relative; }
+        .password-wrapper input { padding-right: 50px; }
+        .toggle-password { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #a0a0cc; font-size: 20px; }
+
+        #dashboard { display:none; }
+        .header { text-align:center; margin-bottom:20px; }
+        .header h1 { font-size:2.4rem; background:linear-gradient(to right,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .logout-btn { position:fixed; top:20px; right:20px; padding:6px 10px; background:#ff4757; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; z-index:1000; transition: background 0.2s ease;}
+	
+	.logout-btn:hover {
+   	 background: #e84118; /* Darker red on hover */
+	}
+
+        /* Safety Recommendation - Enhanced */
+        #safetyBox { 
+            background: #1a1a2e; 
+            border-radius: 16px; 
+            padding: 20px; 
+            margin: 0 auto 25px; 
+            max-width: 1400px; 
+            border: 2px solid #6a11cb; 
+            box-shadow: 0 8px 25px rgba(106,17,203,0.3); 
+        }
+        #safetyTitle { font-size: 1.35rem; margin-bottom: 12px; color: #ff9500; font-weight: bold; }
+        #safetyMsg { 
+            font-size: 1.05rem; 
+            line-height: 1.6; 
+            background: #16213e; 
+            padding: 15px; 
+            border-radius: 12px; 
+            border-left: 5px solid #ff9500;
+        }
+        .param-status { margin: 8px 0; padding: 6px 0; border-bottom: 1px solid #334155; }
+
+        .container { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:20px; max-width:1600px; margin:0 auto; }
+        .card { background:var(--card); border-radius:20px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.4); }
+        .param-name { font-size:1.1rem; color:var(--text-light); margin-bottom:8px; }
+        .digital-value { font-size:3.2rem; font-weight:700; letter-spacing:-2px; margin:10px 0; color:white; }
+        .unit { font-size:1.1rem; color:var(--text-light); }
+        .status { padding:8px 18px; border-radius:30px; font-weight:bold; display:inline-block; margin-top:8px; }
+        .safe { background:#22c55e; color:#0f172a; }
+        .warn { background:#eab308; color:#0f172a; }
+        .danger { background:#ef4444; color:white; }
+        canvas { margin-top:20px; height:200px !important; width:100% !important; }
+
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+            .digital-value { font-size: 2.7rem; }
+            .header h1 { font-size: 2rem; }
+            .card { padding: 20px; }
+            #safetyBox { padding: 16px; margin-bottom: 20px; }
+            canvas { height: 180px !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Login & Signup (with show password) - unchanged -->
+    <div id="loginScreen">
+        <div class="auth-card">
+            <h2>Asthma Smartwatch</h2>
+            <input type="email" id="loginEmail" placeholder="Email Address">
+            <div class="password-wrapper">
+                <input type="password" id="loginPassword" placeholder="Password">
+                <span class="toggle-password" onclick="togglePassword('loginPassword', this)">👁️</span>
+            </div>
+            <button onclick="login()">Sign In</button>
+            <div class="error" id="loginError"></div>
+            <div class="toggle-link" onclick="showSignup()">Don't have an account? Create one</div>
+        </div>
+    </div>
+
+    <div id="signupScreen" style="display:none;">
+        <div class="auth-card">
+            <h2>Create Account</h2>
+            <input type="email" id="signupEmail" placeholder="Email Address">
+            <div class="password-wrapper">
+                <input type="password" id="signupPassword" placeholder="Password (min 6 characters)">
+                <span class="toggle-password" onclick="togglePassword('signupPassword', this)">👁️</span>
+            </div>
+            <button onclick="signup()">Create Account</button>
+            <div class="error" id="signupError"></div>
+            <div class="toggle-link" onclick="showLogin()">Already have an account? Sign In</div>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard">
+        <button class="logout-btn" onclick="logout()">Logout</button>
+        
+        <div class="header">
+            <h1>Asthma Smartwatch Dashboard</h1>
+            <p>Real-time Air Quality Monitoring</p>
+        </div>
+
+        <!-- Enhanced Safety Recommendation -->
+        <div id="safetyBox">
+            <div id="safetyTitle">🛡️ Patient Safety Recommendations</div>
+            <div id="safetyMsg">Waiting for sensor data from smartwatch...</div>
+        </div>
+
+        <div id="statusMsg" style="text-align:center; color:#22c55e; margin:10px 0; font-weight:bold;">Waiting for data from smartwatch...</div>
+
+        <div class="container">
+            <div class="card"><div class="param-name">🌡️ Temperature</div><div class="digital-value" id="temperatureVal">--</div><span class="unit">°C</span><span id="temperatureStatus" class="status">Normal</span><canvas id="tempChart"></canvas></div>
+            <div class="card"><div class="param-name">💧 Humidity</div><div class="digital-value" id="humidityVal">--</div><span class="unit">%</span><span id="humidityStatus" class="status">Normal</span><canvas id="humChart"></canvas></div>
+            <div class="card"><div class="param-name">☁️ CO</div><div class="digital-value" id="COVal">--</div><span class="unit">ppm</span><span id="COStatus" class="status">Normal</span><canvas id="coChart"></canvas></div>
+            <div class="card"><div class="param-name">🧪 NH3</div><div class="digital-value" id="NH3Val">--</div><span class="unit">ppm</span><span id="NH3Status" class="status">Normal</span><canvas id="nh3Chart"></canvas></div>
+            <div class="card"><div class="param-name">🌫️ PM2.5</div><div class="digital-value" id="PM25Val">--</div><span class="unit">µg/m³</span><span id="PM25Status" class="status">Normal</span><canvas id="pmChart"></canvas></div>
+            <div class="card"><div class="param-name">🟦 H₂ (Hydrogen)</div><div class="digital-value" id="H2Val">--</div><span class="unit">ppm</span><span id="H2Status" class="status">Normal</span><canvas id="h2Chart"></canvas></div>
+            <div class="card"><div class="param-name">🔥 CH₄ (Methane)</div><div class="digital-value" id="CH4Val">--</div><span class="unit">ppm</span><span id="CH4Status" class="status">Normal</span><canvas id="ch4Chart"></canvas></div>
+            <div class="card"><div class="param-name">🍷 Ethanol (ETH)</div><div class="digital-value" id="ETHVal">--</div><span class="unit">ppm</span><span id="ETHStatus" class="status">Normal</span><canvas id="ethChart"></canvas></div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = { /* your config remains the same */ 
+          apiKey: "AIzaSyCI63mpRxVMPjiEBNP30Z14cz2mMfhVqcQ",
+          authDomain: "asthmaticsmartwatch.firebaseapp.com",
+          databaseURL: "https://asthmaticsmartwatch-default-rtdb.firebaseio.com",
+          projectId: "asthmaticsmartwatch",
+          storageBucket: "asthmaticsmartwatch.firebasestorage.app",
+          messagingSenderId: "892359860525",
+          appId: "1:892359860525:web:5016155d1a6bf0239973a4",
+          measurementId: "G-QB8LJ0HTQS"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
+
+        let charts = {};
+        const dataArrays = { temp:[], hum:[], co:[], nh3:[], pm:[], h2:[], ch4:[], eth:[] };
+        let labels = [];
+        let listenerAttached = false;
+
+        function safeNumber(val) { const num = Number(val); return isNaN(num) ? 0 : num; }
+
+        function createChart(canvasId, label, color) {
+            return new Chart(document.getElementById(canvasId), {
+                type: 'line', data: { labels: labels, datasets: [{ label: label, data: dataArrays[canvasId.replace('Chart','')], borderColor: color, backgroundColor: color+'33', tension: 0.4, borderWidth: 3 }] },
+                options: { responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true, grid:{color:'#334155'} }, x:{ grid:{color:'#334155'} } }, plugins:{ legend:{labels:{color:'#a0a0cc'}} }}
+            });
+        }
+
+        function initCharts() {
+            charts.temp = createChart('tempChart', 'Temperature', '#ff4757');
+            charts.hum  = createChart('humChart',  'Humidity',   '#1e90ff');
+            charts.co   = createChart('coChart',   'CO',         '#2ed573');
+            charts.nh3  = createChart('nh3Chart',  'NH3',        '#ffa502');
+            charts.pm   = createChart('pmChart',   'PM2.5',      '#8e44ad');
+            charts.h2   = createChart('h2Chart',   'H₂',         '#00d4ff');
+            charts.ch4  = createChart('ch4Chart',  'CH₄',        '#ff9500');
+            charts.eth  = createChart('ethChart',  'Ethanol',    '#c026d3');
+        }
+
+        function togglePassword(fieldId, icon) {
+            const field = document.getElementById(fieldId);
+            if (field.type === "password") {
+                field.type = "text"; icon.textContent = "🙈";
+            } else {
+                field.type = "password"; icon.textContent = "👁️";
+            }
+        }
+
+        function login() { /* same as before */ 
+            const email = document.getElementById('loginEmail').value.trim();
+            const pass = document.getElementById('loginPassword').value;
+            auth.signInWithEmailAndPassword(email, pass).catch(err => document.getElementById('loginError').textContent = err.message);
+        }
+
+        function signup() { /* same */ }
+        function logout() { auth.signOut().then(() => { listenerAttached = false; document.getElementById('dashboard').style.display = 'none'; document.getElementById('loginScreen').style.display = 'flex'; }); }
+        function showSignup() { document.getElementById('loginScreen').style.display='none'; document.getElementById('signupScreen').style.display='flex'; }
+        function showLogin() { document.getElementById('signupScreen').style.display='none'; document.getElementById('loginScreen').style.display='flex'; }
+
+        // ==================== DETAILED SAFETY RECOMMENDATION ====================
+        function updateSafetyRecommendation(data, status) {
+            let html = `<strong>Current Parameter Status & Recommendations:</strong><br><br>`;
+
+            const params = [
+                { name: "Temperature", val: data.temp, unit: "°C", st: status.temp, 
+                  danger: "High temperature can trigger asthma attacks. Move to cooler area and stay hydrated.", 
+                  warn: "Temperature is elevated. Monitor closely and avoid strenuous activity." },
+                { name: "Humidity", val: data.hum, unit: "%", st: status.hum, 
+                  danger: "High humidity makes breathing difficult. Use dehumidifier or move to drier environment.", 
+                  warn: "Humidity is rising. Consider improving ventilation." },
+                { name: "CO (Carbon Monoxide)", val: data.CO, unit: "ppm", st: status.CO, 
+                  danger: "🚨 DANGER: Carbon Monoxide is toxic! Leave the area immediately and seek fresh air.", 
+                  warn: "CO levels are rising. Improve ventilation and monitor symptoms." },
+                { name: "NH3 (Ammonia)", val: data.NH3, unit: "ppm", st: status.NH3, 
+                  danger: "🚨 Ammonia irritates airways. Wear mask and ventilate the area immediately.", 
+                  warn: "NH3 detected. Avoid prolonged exposure." },
+                { name: "PM2.5", val: data.PM25, unit: "µg/m³", st: status.PM25, 
+                  danger: "🚨 High particulate matter. Wear N95/ACE mask and limit outdoor activity.", 
+                  warn: "PM2.5 is moderate. Consider wearing mask if sensitive." },
+                { name: "H₂ (Hydrogen)", val: data.H2, unit: "ppm", st: status.H2, 
+                  danger: "Hydrogen gas detected. Ensure good ventilation and avoid sparks.", 
+                  warn: "Hydrogen levels rising. Monitor closely." },
+                { name: "CH₄ (Methane)", val: data.CH4, unit: "ppm", st: status.CH4, 
+                  danger: "Methane is flammable and can displace oxygen. Ventilate immediately.", 
+                  warn: "Methane detected. Improve air circulation." },
+                { name: "ETH (Ethanol)", val: data.ETH, unit: "ppm", st: status.ETH, 
+                  danger: "High VOCs (Ethanol). Wear mask and ventilate the room.", 
+                  warn: "Ethanol/VOC levels elevated. Avoid exposure if asthmatic." }
+            ];
+
+            params.forEach(p => {
+                let color = p.st === "DANGER" ? "#ef4444" : p.st === "WARN" ? "#eab308" : "#22c55e";
+                let rec = p.st === "DANGER" ? p.danger : (p.st === "WARN" ? p.warn : "Currently within safe range.");
+                
+                html += `<div class="param-status" style="color:${color}">
+                    <strong>${p.name}:</strong> ${p.st} (${safeNumber(p.val).toFixed(1)} ${p.unit})<br>
+                    <span style="font-size:0.95rem;">${rec}</span>
+                </div>`;
+            });
+
+            document.getElementById('safetyMsg').innerHTML = html;
+        }
+
+        // Main Data Listener
+        auth.onAuthStateChanged(user => {
+            if (user && !listenerAttached) {
+                listenerAttached = true;
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                if (!charts.temp) initCharts();
+
+                db.ref('/asthma_monitor').on('value', (snapshot) => {
+                    const root = snapshot.val() || {};
+                    const data = root.data || {};
+                    const status = root.status || {};
+
+                    document.getElementById('statusMsg').innerHTML = "✅ Live data updating...";
+
+                    // Update displayed values
+                    document.getElementById('temperatureVal').innerText = safeNumber(data.temp).toFixed(1);
+                    document.getElementById('humidityVal').innerText   = safeNumber(data.hum).toFixed(1);
+                    document.getElementById('COVal').innerText         = safeNumber(data.CO).toFixed(1);
+                    document.getElementById('NH3Val').innerText        = safeNumber(data.NH3).toFixed(1);
+                    document.getElementById('PM25Val').innerText       = safeNumber(data.PM25).toFixed(1);
+                    document.getElementById('H2Val').innerText         = safeNumber(data.H2).toFixed(1);
+                    document.getElementById('CH4Val').innerText        = safeNumber(data.CH4).toFixed(1);
+                    document.getElementById('ETHVal').innerText        = safeNumber(data.ETH).toFixed(1);
+
+                    // Update status badges
+                    document.getElementById('temperatureStatus').innerText = status.temp || "Normal";
+                    document.getElementById('humidityStatus').innerText   = status.hum || "Normal";
+                    document.getElementById('COStatus').innerText         = status.CO || "Normal";
+                    document.getElementById('NH3Status').innerText        = status.NH3 || "Normal";
+                    document.getElementById('PM25Status').innerText       = status.PM25 || "Normal";
+                    document.getElementById('H2Status').innerText         = status.H2 || "Normal";
+                    document.getElementById('CH4Status').innerText        = status.CH4 || "Normal";
+                    document.getElementById('ETHStatus').innerText        = status.ETH || "Normal";
+
+                    document.querySelectorAll('.status').forEach(el => {
+                        const txt = el.innerText.toLowerCase();
+                        el.className = `status ${txt}`;
+                    });
+
+                    // Update detailed safety recommendations
+                    updateSafetyRecommendation(data, status);
+
+                    // Update charts
+                    const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    labels.push(time);
+                    if (labels.length > 12) labels.shift();
+
+                    dataArrays.temp.push(safeNumber(data.temp));
+                    dataArrays.hum.push(safeNumber(data.hum));
+                    dataArrays.co.push(safeNumber(data.CO));
+                    dataArrays.nh3.push(safeNumber(data.NH3));
+                    dataArrays.pm.push(safeNumber(data.PM25));
+                    dataArrays.h2.push(safeNumber(data.H2));
+                    dataArrays.ch4.push(safeNumber(data.CH4));
+                    dataArrays.eth.push(safeNumber(data.ETH));
+
+                    if (dataArrays.temp.length > 12) Object.keys(dataArrays).forEach(k => dataArrays[k].shift());
+
+                    Object.values(charts).forEach(chart => chart.update());
+                });
+            }
+        });
+    </script>
+</body>
+</html>
